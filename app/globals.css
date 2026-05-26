@@ -1,4 +1,31 @@
-@import "tailwindcss";
+body{
+  font-family:sans-serif;
+  background: #fafaff;
+  color: #15101b;
+}
+table{
+  width:100%;
+  border-collapse: collapse;
+  margin: 14px 0;
+  background: #fff;
+}
+th, td{
+  border: 1px solid #ddd;
+  padding:6px 8px;
+}
+th{
+  background: #e7d6fa
+}
+input,select,button,textarea{
+  margin:2px 1px;
+  padding:4px 6px;
+  border-radius:3px;
+  border:1px solid #bcc;
+  font-size:1em;
+}
+input[type=number]{
+  width:80px;
+}@import "tailwindcss";
 
 :root {
   --background: #ffffff;
