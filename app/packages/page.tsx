@@ -2,7 +2,6 @@
 import { useState, useEffect } from 'react';
 import supabase from '../../lib/supabase';
 
-// Packages are made up of a name, and multiple items (name/qty)
 type PackageItem = { name: string; qty: number; }
 type RentalPackage = {
   id: number;
@@ -37,7 +36,6 @@ export default function PackagesPage() {
   const [pkgItems, setPkgItems] = useState<PackageItem[]>([{ name: '', qty: 1 }]);
 
   async function addPackage() {
-    // Insert the package (returns id), then insert items!
     const { data, error } = await supabase.from('packages').insert([{ name: pkgName }]).select();
     if (data && data.length) {
       const pkgid = data[0].id;
@@ -50,7 +48,7 @@ export default function PackagesPage() {
     fetchPackages();
   }
   async function deletePackage(id: number) {
-    await supabase.from('packages').delete().eq('id', id); // package_items has FK with ON DELETE CASCADE
+    await supabase.from('packages').delete().eq('id, id); // package_items has FK with ON DELETE CASCADE
     fetchPackages();
   }
 

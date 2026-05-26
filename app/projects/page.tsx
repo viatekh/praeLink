@@ -41,7 +41,6 @@ export default function ProjectsPage() {
   }
   useEffect(() => { fetchProjects(); fetchClients(); }, []);
 
-  // Add project
   const [showForm, setShowForm] = useState(false);
   const [proj, setProj] = useState<Partial<Project>>({name:'',client_id:0,quote_date:'',event_start:'',event_end:'',status:'Enquiry',items:[]});
   function updateProjItem(i: number, field: string, value: string|number) {
@@ -52,7 +51,6 @@ export default function ProjectsPage() {
   }
 
   async function addProject() {
-    // Insert project, then insert items as needed
     const { data, error } = await supabase.from('projects').insert([{
       name: proj.name,
       client_id: proj.client_id,
