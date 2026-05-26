@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import supabase from '../../lib/supabase';
 
-type PackageItem = { name: string; qty: number; }
+type PackageItem = { name: string; qty: number; };
 type RentalPackage = {
   id: number;
   name: string;
@@ -30,7 +30,7 @@ export default function PackagesPage() {
   }
   useEffect(()=>{ fetchPackages(); },[]);
 
-  // Add package
+  // Add package form
   const [showForm, setShowForm] = useState(false);
   const [pkgName, setPkgName] = useState('');
   const [pkgItems, setPkgItems] = useState<PackageItem[]>([{ name: '', qty: 1 }]);
@@ -44,11 +44,11 @@ export default function PackagesPage() {
         await supabase.from('package_items').insert([{ package_id: pkgid, item_name: it.name, quantity: it.qty }]);
       }
     }
-    setShowForm(false); setPkgItems([{ name: '', qty: 1}]); setPkgName('');
+    setShowForm(false); setPkgItems([{ name: '', qty: 1 }]); setPkgName('');
     fetchPackages();
   }
   async function deletePackage(id: number) {
-    await supabase.from('packages').delete().eq('id, id); // package_items has FK with ON DELETE CASCADE
+    await supabase.from('packages').delete().eq('id', id); // package_items has FK with ON DELETE CASCADE
     fetchPackages();
   }
 
