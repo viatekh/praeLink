@@ -103,8 +103,8 @@ export default function ProjectsPage() {
             <div key={i} style={{marginBottom:7}}>
               <input placeholder="Item/Package Name" value={it.name} onChange={e=>updateProjItem(i,'name',e.target.value)} />
               <input style={{width:60}} type="number" min={1} value={it.qty||1} onChange={e=>updateProjItem(i,'qty',parseInt(e.target.value)||1)} />
-              {proj.items.length>1 && <button onClick={()=>setProj({...proj,items:(proj.items||[]).filter((_,ix)=>ix!==i)})}>-</button>}
-              {i===proj.items.length-1 && <button onClick={()=>setProj({...proj,items:[...(proj.items||[]),{name:'',qty:1}]})}>+</button>}
+              {(proj.items||[]).length>1 && <button onClick={()=>setProj({...proj,items:(proj.items||[]).filter((_,ix)=>ix!==i)})}>-</button>}
+              {i===(proj.items||[]).length-1 && <button onClick={()=>setProj({...proj,items:[...(proj.items||[]),{name:'',qty:1}]})}>+</button>}
             </div>
           ))}
           <button onClick={addProject}>Save</button>
