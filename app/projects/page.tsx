@@ -245,7 +245,7 @@ export default function ProjectsPage() {
             <Box>
               <Typography variant="subtitle1">Kit List</Typography>
               {(proj.items||[]).map((it,i)=>(
-                <Stack key={i} direction="row" spacing={1} alignItems="center" sx={{my:0.5}}>
+                <Stack key={i} direction="row" spacing={1} sx={{my:0.5, alignItems: 'center'}}>
                   <Autocomplete
                     freeSolo
                     options={inventoryItems.map(inv=>inv.name)}
