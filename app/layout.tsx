@@ -1,5 +1,6 @@
 import './globals.css';
 import Link from 'next/link';
+import { AppBar, Toolbar, Typography, Box, Button, Stack } from '@mui/material';
 
 export const metadata = {
   title: 'praeLink Equipment Rental',
@@ -10,13 +11,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <nav style={{display: 'flex', gap: 12, padding: '18px', background: '#f6f1ff'}}>
-          <Link href="/">Dashboard</Link>
-          <Link href="/inventory">Inventory</Link>
-          <Link href="/packages">Packages</Link>
-          <Link href="/clients">Clients</Link>
-          <Link href="/projects">Projects</Link>
-        </nav>
+        <AppBar position="static" sx={{ mb: 3, bgcolor: '#6443cb' }}>
+          <Toolbar>
+            <Typography variant="h6" sx={{ flexGrow: 1 }}>
+              praeLink
+            </Typography>
+            <Stack direction="row" spacing={2}>
+              <Button color="inherit" component={Link} href="/">Dashboard</Button>
+              <Button color="inherit" component={Link} href="/inventory">Inventory</Button>
+              <Button color="inherit" component={Link} href="/packages">Packages</Button>
+              <Button color="inherit" component={Link} href="/clients">Clients</Button>
+              <Button color="inherit" component={Link} href="/projects">Projects</Button>
+            </Stack>
+          </Toolbar>
+        </AppBar>
         <main>{children}</main>
       </body>
     </html>
