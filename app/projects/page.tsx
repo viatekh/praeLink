@@ -1,135 +1,224 @@
 'use client';
 import { useState, useEffect } from 'react';
+import {
+  Box,
+  Button,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Select,
+  Chip,
+  Typography,
+  Table,
+  TableHead,
+  TableBody,
+  TableCell,
+  TableRow,
+  Paper,
+  Snackbar,
+  Autocomplete,
+  Stack,
+} from '@mui/material';
 import supabase from '../../lib/supabase';
 
-type Project = {
+const CATEGORY_OPTIONS = ['DJ', 'SPEAKER', 'LIGHT'];
+const TYPE_OPTIONS = ['UNIT', 'COMPONENT'];
+const STATUS_OPTIONS = ['OK', 'OUT OF SERVICE'];
+
+type InventoryItem = {
   id: number;
+  code: string;
   name: string;
-  client_id: number;
-  quote_date: string;
-  event_start: string;
-  event_end: string;
+  category: string;
+  type: string;
   status: string;
-  items: { name: string, qty: number }[];
+  price_day: number | null;
+  components: number[]; // store as array of IDs
 };
 
-export default function ProjectsPage() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [clients, setClients] = useState<any[]>([]);
+export default function InventoryPage() {
+  const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  async function fetchProjects() {
+  // For components picker
+  const componentItems = items.filter((i) => i.type === 'COMPONENT');
+  const [snackbar, setSnackbar] = useState<{ open: boolean, message: string, severity: 'success'|'error' }>({ open: false, message: '', severity: 'success' });
+
+  // Add Item Dialog Form State
+  const [showForm, setShowForm] = useState(false);
+  const [formItem, setFormItem] = useState<Partial<InventoryItem>>({ type: 'UNIT', status: 'OK', category: CATEGORY_OPTIONS[0], components: [] });
+
+  async function fetchItems() {
     setLoading(true);
-    const { data, error } = await supabase.from('projects').select('*, project_items (name, quantity, is_package)');
-    if (!error && data) {
-      setProjects(data.map(proj=>({
-        id: proj.id,
-        name: proj.name,
-        client_id: proj.client_id,
-        quote_date: proj.quote_date,
-        event_start: proj.event_start,
-        event_end: proj.event_end,
-        status: proj.status,
-        items: proj.project_items?.map((it:any)=>({name:it.name, qty:it.quantity, is_package:it.is_package}))||[]
-      })));
+    const { data, error } = await supabase.from('inventory').select('*').order('id');
+    if (error) {
+      setSnackbar({ open: true, message: 'Failed to load inventory', severity: 'error' });
+      setLoading(false);
+      return;
     }
+    setItems(data || []);
     setLoading(false);
   }
-  async function fetchClients() {
-    const { data } = await supabase.from('clients').select('id, name');
-    if (data) setClients(data);
-  }
-  useEffect(() => { fetchProjects(); fetchClients(); }, []);
 
-  const [showForm, setShowForm] = useState(false);
-  const [proj, setProj] = useState<Partial<Project>>({name:'',client_id:0,quote_date:'',event_start:'',event_end:'',status:'Enquiry',items:[]});
-  function updateProjItem(i: number, field: string, value: string|number) {
-    setProj({
-      ...proj,
-      items: (proj.items || []).map((it,ix)=>ix===i?{...it,[field]:value}:it)
-    })
-  }
+  useEffect(() => { fetchItems(); }, []);
 
-  async function addProject() {
-    const { data, error } = await supabase.from('projects').insert([{
-      name: proj.name,
-      client_id: proj.client_id,
-      quote_date: proj.quote_date,
-      event_start: proj.event_start,
-      event_end: proj.event_end,
-      status: proj.status
-    }]).select();
-    if (data && data.length) {
-      for (const it of (proj.items||[])) {
-        if (!it.name) continue;
-        await supabase.from('project_items').insert([{
-          project_id: data[0].id, name: it.name, quantity: it.qty, is_package: false
-        }]);
-      }
+  async function handleAdd() {
+    if (!formItem.name) {
+      setSnackbar({ open: true, message: 'Item Name required', severity: 'error' });
+      return;
     }
-    setShowForm(false); setProj({ name:'',client_id:0,quote_date:'',event_start:'',event_end:'',status:'Enquiry',items:[]});
-    fetchProjects();
+    // Autogenerate code: <truncated NAME no spaces/titlecase>-<nextNumber>
+    const base = formItem.name.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8).toUpperCase();
+    const countSame = items.filter(i => i.name.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8).toUpperCase() === base).length + 1;
+    const code = `${base}-${String(countSame).padStart(3, '0')}`;
+
+    // Prepare DB insert (components as array of id numbers, supabase will map to correct array field)
+    const toInsert = {
+      ...formItem,
+      code,
+      components: formItem.components || [],
+    };
+    const { error } = await supabase.from('inventory').insert([toInsert]);
+    if (error) {
+      setSnackbar({ open: true, message: error.message || 'Error saving item', severity: 'error' });
+    } else {
+      setSnackbar({ open: true, message: 'Item added!', severity: 'success' });
+      setShowForm(false);
+      setFormItem({ type: 'UNIT', status: 'OK', category: CATEGORY_OPTIONS[0], components: [] });
+      fetchItems();
+    }
   }
 
-  async function deleteProject(id: number) {
-    await supabase.from('projects').delete().eq('id', id);
-    fetchProjects();
+  async function handleDelete(id: number) {
+    const { error } = await supabase.from('inventory').delete().eq('id', id);
+    if (error) {
+      setSnackbar({ open: true, message: 'Error deleting item', severity: 'error' });
+    } else {
+      setSnackbar({ open: true, message: 'Item deleted', severity: 'success' });
+      fetchItems();
+    }
   }
 
   return (
-    <div style={{padding:24}}>
-      <h2>Projects</h2>
-      <button onClick={()=>setShowForm(true)}>Add Project</button>
-      {showForm && (
-        <div style={{background:'#ffeff6',padding:12,margin:'10px 0'}}>
-          <input placeholder="Name" value={proj.name||''} onChange={e=>setProj({...proj,name:e.target.value})} />
-          <select value={proj.client_id||0} onChange={e=>setProj({...proj,client_id:parseInt(e.target.value)||0})}>
-            <option value={0}>Select Client</option>
-            {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-          <input placeholder="Quote Date" type="date" value={proj.quote_date||''} onChange={e=>setProj({...proj,quote_date:e.target.value})}/>
-          <input placeholder="Event Start" type="date" value={proj.event_start||''} onChange={e=>setProj({...proj,event_start:e.target.value})}/>
-          <input placeholder="Event End" type="date" value={proj.event_end||''} onChange={e=>setProj({...proj,event_end:e.target.value})}/>
-          <select value={proj.status||'Enquiry'} onChange={e=>setProj({...proj,status:e.target.value})}>
-            <option>Enquiry</option>
-            <option>Quoted</option>
-            <option>Confirmed</option>
-            <option>Invoiced</option>
-            <option>Paid</option>
-            <option>Completed</option>
-            <option>Cancelled</option>
-          </select>
-          {(proj.items||[]).map((it,i)=>(
-            <div key={i} style={{marginBottom:7}}>
-              <input placeholder="Item/Package Name" value={it.name} onChange={e=>updateProjItem(i,'name',e.target.value)} />
-              <input style={{width:60}} type="number" min={1} value={it.qty||1} onChange={e=>updateProjItem(i,'qty',parseInt(e.target.value)||1)} />
-              {(proj.items||[]).length>1 && <button onClick={()=>setProj({...proj,items:(proj.items||[]).filter((_,ix)=>ix!==i)})}>-</button>}
-              {i===(proj.items||[]).length-1 && <button onClick={()=>setProj({...proj,items:[...(proj.items||[]),{name:'',qty:1}]})}>+</button>}
-            </div>
-          ))}
-          <button onClick={addProject}>Save</button>
-          <button onClick={()=>setShowForm(false)}>Cancel</button>
-        </div>
-      )}
-      {loading ? <p>Loading...</p> : <table>
-        <thead>
-          <tr>
-            <th>Name</th><th>Client</th><th>Dates</th><th>Status</th><th>Kit List</th><th>Delete</th>
-          </tr>
-        </thead>
-        <tbody>
-          {projects.map(p=>(
-            <tr key={p.id}>
-              <td>{p.name}</td>
-              <td>{clients.find(c=>c.id===p.client_id)?.name||'—'}</td>
-              <td>{p.event_start} to {p.event_end}</td>
-              <td>{p.status}</td>
-              <td>{p.items.map(it=>(`${it.name} x${it.qty}`)).join(', ')}</td>
-              <td><button onClick={()=>deleteProject(p.id)}>Delete</button></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>}
-    </div>
+    <Box sx={{ maxWidth: 900, margin: '0 auto', mt: 4 }}>
+      <Typography variant="h4" gutterBottom>Inventory</Typography>
+      <Button variant="contained" onClick={() => setShowForm(true)}>Add Item</Button>
+      <Paper sx={{ mt: 3, p: 2 }}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell>Code</TableCell><TableCell>Name</TableCell>
+              <TableCell>Category</TableCell><TableCell>Type</TableCell>
+              <TableCell>Status</TableCell><TableCell>Price/Day</TableCell>
+              <TableCell>Components</TableCell><TableCell>Delete</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {loading
+              ? <TableRow><TableCell colSpan={8}><Typography>Loading...</Typography></TableCell></TableRow>
+              : items.map(i => (
+                <TableRow key={i.id}>
+                  <TableCell>{i.code}</TableCell>
+                  <TableCell>{i.name}</TableCell>
+                  <TableCell>{i.category}</TableCell>
+                  <TableCell>{i.type}</TableCell>
+                  <TableCell>{i.status}</TableCell>
+                  <TableCell>{i.price_day}</TableCell>
+                  <TableCell>
+                    <Stack direction="row" spacing={0.5} flexWrap="wrap">
+                      {(i.components || []).map(cid =>
+                        <Chip size="small" key={cid} label={items.find(ci => ci.id === cid)?.name || cid} />
+                      )}
+                    </Stack>
+                  </TableCell>
+                  <TableCell>
+                    <Button variant="outlined" color="error" onClick={() => handleDelete(i.id)}>Delete</Button>
+                  </TableCell>
+                </TableRow>
+              ))
+            }
+          </TableBody>
+        </Table>
+      </Paper>
+      {/* Add/Edit Dialog */}
+      <Dialog open={showForm} onClose={() => setShowForm(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Add Inventory Item</DialogTitle>
+        <DialogContent>
+          <Box component="form" sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <TextField
+              label="Name"
+              value={formItem.name || ''}
+              onChange={e => setFormItem({ ...formItem, name: e.target.value })}
+              required
+            />
+            <FormControl>
+              <InputLabel>Category</InputLabel>
+              <Select
+                label="Category"
+                value={formItem.category || CATEGORY_OPTIONS[0]}
+                onChange={e => setFormItem({ ...formItem, category: e.target.value })}
+              >
+                {CATEGORY_OPTIONS.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+              </Select>
+            </FormControl>
+            <FormControl>
+              <InputLabel>Type</InputLabel>
+              <Select
+                label="Type"
+                value={formItem.type || TYPE_OPTIONS[0]}
+                onChange={e => setFormItem({ ...formItem, type: e.target.value })}
+              >
+                {TYPE_OPTIONS.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
+              </Select>
+            </FormControl>
+            <FormControl>
+              <InputLabel>Status</InputLabel>
+              <Select
+                label="Status"
+                value={formItem.status || STATUS_OPTIONS[0]}
+                onChange={e => setFormItem({ ...formItem, status: e.target.value })}
+              >
+                {STATUS_OPTIONS.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}
+              </Select>
+            </FormControl>
+            <TextField
+              label="Price/Day"
+              type="number"
+              value={formItem.price_day ?? ''}
+              onChange={e => setFormItem({ ...formItem, price_day: Number(e.target.value) })}
+            />
+            {/* Only show 'Components' if UNIT */}
+            {formItem.type === 'UNIT' && (
+              <Autocomplete
+                multiple
+                options={componentItems}
+                getOptionLabel={opt => opt.name}
+                value={componentItems.filter(ci => (formItem.components || []).includes(ci.id))}
+                onChange={(_, val) => setFormItem({ ...formItem, components: val.map(ci => ci.id) })}
+                renderInput={(params) => (
+                  <TextField {...params} label="Components (Select 0 or more)" />
+                )}
+              />
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowForm(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleAdd}>Save</Button>
+        </DialogActions>
+      </Dialog>
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        message={snackbar.message}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      />
+    </Box>
   );
 }
