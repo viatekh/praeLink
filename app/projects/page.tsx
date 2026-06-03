@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, ChangeEvent } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   Button,
@@ -257,7 +257,6 @@ export default function ProjectsPage() {
                   <TextField
                     label="Qty"
                     type="number"
-                    inputProps={{ min: 1 }}
                     sx={{ width: 80 }}
                     value={it.qty||1}
                     onChange={e=>updateProjItem(i, 'qty', parseInt(e.target.value)||1)}
