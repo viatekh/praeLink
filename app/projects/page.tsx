@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, ChangeEvent } from 'react';
 import {
   Box,
   Button,
@@ -216,21 +216,18 @@ export default function ProjectsPage() {
               <TextField
                 label="Quote Date"
                 type="date"
-                InputLabelProps={{ shrink:true }}
                 value={proj.quote_date||''}
                 onChange={e=>setProj({...proj, quote_date: e.target.value})}
               />
               <TextField
                 label="Event Start"
                 type="date"
-                InputLabelProps={{ shrink:true }}
                 value={proj.event_start||''}
                 onChange={e=>setProj({...proj, event_start: e.target.value})}
               />
               <TextField
                 label="Event End"
                 type="date"
-                InputLabelProps={{ shrink:true }}
                 value={proj.event_end||''}
                 onChange={e=>setProj({...proj, event_end: e.target.value})}
               />
