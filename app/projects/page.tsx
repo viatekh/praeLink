@@ -12,210 +12,279 @@ import {
   FormControl,
   InputLabel,
   Select,
-  Chip,
   Typography,
   Table,
   TableHead,
   TableBody,
-  TableCell,
   TableRow,
+  TableCell,
   Paper,
   Snackbar,
   Autocomplete,
   Stack,
+  Chip,
 } from '@mui/material';
 import supabase from '../../lib/supabase';
 
-const CATEGORY_OPTIONS = ['DJ', 'SPEAKER', 'LIGHT'];
-const TYPE_OPTIONS = ['UNIT', 'COMPONENT'];
-const STATUS_OPTIONS = ['OK', 'OUT OF SERVICE'];
-
-type InventoryItem = {
+type ProjectItem = { name: string; qty: number };
+type Project = {
   id: number;
-  code: string;
   name: string;
-  category: string;
-  type: string;
+  client_id: number;
+  quote_date: string;
+  event_start: string;
+  event_end: string;
   status: string;
-  price_day: number | null;
-  components: number[]; // store as array of IDs
+  items: ProjectItem[];
 };
 
-export default function InventoryPage() {
-  const [items, setItems] = useState<InventoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
+const STATUS_OPTIONS = [
+  'Enquiry', 'Quoted', 'Confirmed', 'Invoiced', 'Paid', 'Completed', 'Cancelled',
+];
 
-  // For components picker
-  const componentItems = items.filter((i) => i.type === 'COMPONENT');
+export default function ProjectsPage() {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [clients, setClients] = useState<{ id: number; name: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
   const [snackbar, setSnackbar] = useState<{ open: boolean, message: string, severity: 'success'|'error' }>({ open: false, message: '', severity: 'success' });
 
-  // Add Item Dialog Form State
-  const [showForm, setShowForm] = useState(false);
-  const [formItem, setFormItem] = useState<Partial<InventoryItem>>({ type: 'UNIT', status: 'OK', category: CATEGORY_OPTIONS[0], components: [] });
+  // For kit list
+  const [inventoryItems, setInventoryItems] = useState<{name: string}[]>([]);
 
-  async function fetchItems() {
+  const [proj, setProj] = useState<Partial<Project>>({
+    name: '', client_id: 0, quote_date: '', event_start: '', event_end: '', status: 'Enquiry', items: [ { name: '', qty: 1 } ]
+  });
+
+  async function fetchProjects() {
     setLoading(true);
-    const { data, error } = await supabase.from('inventory').select('*').order('id');
-    if (error) {
-      setSnackbar({ open: true, message: 'Failed to load inventory', severity: 'error' });
-      setLoading(false);
-      return;
+    const { data, error } = await supabase.from('projects').select('*, project_items (name, quantity)').order('id', {ascending: false});
+    if (!error && data) {
+      setProjects(data.map(proj=>({
+        id: proj.id,
+        name: proj.name,
+        client_id: proj.client_id,
+        quote_date: proj.quote_date,
+        event_start: proj.event_start,
+        event_end: proj.event_end,
+        status: proj.status,
+        items: proj.project_items?.map((it:any)=>({name:it.name, qty:it.quantity}))||[]
+      })));
     }
-    setItems(data || []);
     setLoading(false);
   }
 
-  useEffect(() => { fetchItems(); }, []);
-
-  async function handleAdd() {
-    if (!formItem.name) {
-      setSnackbar({ open: true, message: 'Item Name required', severity: 'error' });
-      return;
-    }
-    // Autogenerate code: <truncated NAME no spaces/titlecase>-<nextNumber>
-    const base = formItem.name.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8).toUpperCase();
-    const countSame = items.filter(i => i.name.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8).toUpperCase() === base).length + 1;
-    const code = `${base}-${String(countSame).padStart(3, '0')}`;
-
-    // Prepare DB insert (components as array of id numbers, supabase will map to correct array field)
-    const toInsert = {
-      ...formItem,
-      code,
-      components: formItem.components || [],
-    };
-    const { error } = await supabase.from('inventory').insert([toInsert]);
-    if (error) {
-      setSnackbar({ open: true, message: error.message || 'Error saving item', severity: 'error' });
-    } else {
-      setSnackbar({ open: true, message: 'Item added!', severity: 'success' });
-      setShowForm(false);
-      setFormItem({ type: 'UNIT', status: 'OK', category: CATEGORY_OPTIONS[0], components: [] });
-      fetchItems();
-    }
+  async function fetchClients() {
+    const { data } = await supabase.from('clients').select('id, name').order('name');
+    if (data) setClients(data);
   }
 
-  async function handleDelete(id: number) {
-    const { error } = await supabase.from('inventory').delete().eq('id', id);
-    if (error) {
-      setSnackbar({ open: true, message: 'Error deleting item', severity: 'error' });
-    } else {
-      setSnackbar({ open: true, message: 'Item deleted', severity: 'success' });
-      fetchItems();
+  async function fetchInventory() {
+    const { data } = await supabase.from('inventory').select('name');
+    if (data) setInventoryItems(data);
+  }
+
+  useEffect(() => {
+    fetchProjects();
+    fetchClients();
+    fetchInventory();
+  }, []);
+
+  function updateProjItem(i: number, field: string, value: string|number) {
+    setProj({
+      ...proj,
+      items: (proj.items || []).map((it,ix)=>ix===i?{...it,[field]:value}:it)
+    })
+  }
+  function addKitLine() {
+    setProj({ ...proj, items: [ ...(proj.items||[]), { name: '', qty: 1 }] });
+  }
+  function removeKitLine(i: number) {
+    setProj({ ...proj, items: (proj.items || []).filter((_, ix) => ix !== i) });
+  }
+
+  async function addProject() {
+    if (!proj.name || !proj.client_id || (proj.items||[]).length === 0) {
+      setSnackbar({ open: true, message: 'Name, client, and kit required', severity: 'error' });
+      return;
     }
+    // Insert project, then items
+    const { data, error } = await supabase.from('projects').insert([{
+      name: proj.name,
+      client_id: proj.client_id,
+      quote_date: proj.quote_date,
+      event_start: proj.event_start,
+      event_end: proj.event_end,
+      status: proj.status
+    }]).select();
+    if (error) {
+      setSnackbar({ open: true, message: 'Error adding project', severity: 'error' });
+      return;
+    }
+    if (data && data.length) {
+      for (const it of proj.items || []) {
+        if (!it.name) continue;
+        await supabase.from('project_items').insert([{
+          project_id: data[0].id, name: it.name, quantity: it.qty, is_package: false
+        }]);
+      }
+    }
+    setShowForm(false);
+    setProj({ name:'',client_id:0,quote_date:'',event_start:'',event_end:'',status:'Enquiry',items: [ { name: '', qty: 1 } ]});
+    setSnackbar({ open: true, message: 'Project added', severity: 'success' });
+    fetchProjects();
+  }
+
+  async function deleteProject(id: number) {
+    await supabase.from('projects').delete().eq('id', id);
+    setSnackbar({ open: true, message: 'Project deleted', severity: 'success' });
+    fetchProjects();
   }
 
   return (
-    <Box sx={{ maxWidth: 900, margin: '0 auto', mt: 4 }}>
-      <Typography variant="h4" gutterBottom>Inventory</Typography>
-      <Button variant="contained" onClick={() => setShowForm(true)}>Add Item</Button>
+    <Box sx={{ maxWidth: 1000, margin: '0 auto', mt: 4 }}>
+      <Typography variant="h4" gutterBottom>Projects</Typography>
+      <Button variant="contained" onClick={()=>setShowForm(true)}>Add Project</Button>
       <Paper sx={{ mt: 3, p: 2 }}>
         <Table>
           <TableHead>
             <TableRow>
-              <TableCell>Code</TableCell><TableCell>Name</TableCell>
-              <TableCell>Category</TableCell><TableCell>Type</TableCell>
-              <TableCell>Status</TableCell><TableCell>Price/Day</TableCell>
-              <TableCell>Components</TableCell><TableCell>Delete</TableCell>
+              <TableCell>Name</TableCell>
+              <TableCell>Client</TableCell>
+              <TableCell>Dates</TableCell>
+              <TableCell>Status</TableCell>
+              <TableCell>Kit List</TableCell>
+              <TableCell>Delete</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {loading
-              ? <TableRow><TableCell colSpan={8}><Typography>Loading...</Typography></TableCell></TableRow>
-              : items.map(i => (
-                <TableRow key={i.id}>
-                  <TableCell>{i.code}</TableCell>
-                  <TableCell>{i.name}</TableCell>
-                  <TableCell>{i.category}</TableCell>
-                  <TableCell>{i.type}</TableCell>
-                  <TableCell>{i.status}</TableCell>
-                  <TableCell>{i.price_day}</TableCell>
+              ? <TableRow><TableCell colSpan={6}>Loading...</TableCell></TableRow>
+              : projects.map(proj => (
+                <TableRow key={proj.id}>
+                  <TableCell>{proj.name}</TableCell>
+                  <TableCell>{clients.find(c=>c.id===proj.client_id)?.name||'—'}</TableCell>
                   <TableCell>
-                    <Stack direction="row" spacing={0.5} flexWrap="wrap">
-                      {(i.components || []).map(cid =>
-                        <Chip size="small" key={cid} label={items.find(ci => ci.id === cid)?.name || cid} />
+                    {proj.event_start?.slice(0,10)} to {proj.event_end?.slice(0,10)}
+                  </TableCell>
+                  <TableCell>
+                    <Chip label={proj.status} color={
+                        proj.status === 'Enquiry' ? 'info' :
+                        proj.status === 'Confirmed' ? 'success' :
+                        proj.status === 'Cancelled' ? 'error' :
+                        'default'
+                    }/>
+                  </TableCell>
+                  <TableCell>
+                    <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap' }}>
+                      {proj.items.map((it, i) =>
+                        <Chip size="small" key={i} label={`${it.name} x${it.qty}`} />
                       )}
                     </Stack>
                   </TableCell>
                   <TableCell>
-                    <Button variant="outlined" color="error" onClick={() => handleDelete(i.id)}>Delete</Button>
+                    <Button variant="outlined" color="error" onClick={()=>deleteProject(proj.id)}>Delete</Button>
                   </TableCell>
                 </TableRow>
-              ))
-            }
+              ))}
           </TableBody>
         </Table>
       </Paper>
-      {/* Add/Edit Dialog */}
-      <Dialog open={showForm} onClose={() => setShowForm(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Add Inventory Item</DialogTitle>
+      <Dialog open={showForm} onClose={()=>setShowForm(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Add Project</DialogTitle>
         <DialogContent>
-          <Box component="form" sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Box sx={{display:'flex',flexDirection:'column',gap:2}}>
             <TextField
-              label="Name"
-              value={formItem.name || ''}
-              onChange={e => setFormItem({ ...formItem, name: e.target.value })}
+              label="Project Name"
+              value={proj.name||''}
+              onChange={e=>setProj({...proj, name: e.target.value})}
               required
             />
-            <FormControl>
-              <InputLabel>Category</InputLabel>
+            <FormControl fullWidth>
+              <InputLabel>Client</InputLabel>
               <Select
-                label="Category"
-                value={formItem.category || CATEGORY_OPTIONS[0]}
-                onChange={e => setFormItem({ ...formItem, category: e.target.value })}
+                label="Client"
+                value={proj.client_id||0}
+                onChange={e=>setProj({...proj, client_id: Number(e.target.value) })}
+                required
               >
-                {CATEGORY_OPTIONS.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+                <MenuItem value={0}>Select Client</MenuItem>
+                {clients.map(c=><MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
               </Select>
             </FormControl>
-            <FormControl>
-              <InputLabel>Type</InputLabel>
-              <Select
-                label="Type"
-                value={formItem.type || TYPE_OPTIONS[0]}
-                onChange={e => setFormItem({ ...formItem, type: e.target.value })}
-              >
-                {TYPE_OPTIONS.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
-              </Select>
-            </FormControl>
+            <Stack direction="row" spacing={2}>
+              <TextField
+                label="Quote Date"
+                type="date"
+                InputLabelProps={{ shrink:true }}
+                value={proj.quote_date||''}
+                onChange={e=>setProj({...proj, quote_date: e.target.value})}
+              />
+              <TextField
+                label="Event Start"
+                type="date"
+                InputLabelProps={{ shrink:true }}
+                value={proj.event_start||''}
+                onChange={e=>setProj({...proj, event_start: e.target.value})}
+              />
+              <TextField
+                label="Event End"
+                type="date"
+                InputLabelProps={{ shrink:true }}
+                value={proj.event_end||''}
+                onChange={e=>setProj({...proj, event_end: e.target.value})}
+              />
+            </Stack>
             <FormControl>
               <InputLabel>Status</InputLabel>
               <Select
                 label="Status"
-                value={formItem.status || STATUS_OPTIONS[0]}
-                onChange={e => setFormItem({ ...formItem, status: e.target.value })}
+                value={proj.status||'Enquiry'}
+                onChange={e=>setProj({...proj,status:e.target.value as string})}
               >
-                {STATUS_OPTIONS.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}
+                {STATUS_OPTIONS.map(s=><MenuItem key={s} value={s}>{s}</MenuItem>)}
               </Select>
             </FormControl>
-            <TextField
-              label="Price/Day"
-              type="number"
-              value={formItem.price_day ?? ''}
-              onChange={e => setFormItem({ ...formItem, price_day: Number(e.target.value) })}
-            />
-            {/* Only show 'Components' if UNIT */}
-            {formItem.type === 'UNIT' && (
-              <Autocomplete
-                multiple
-                options={componentItems}
-                getOptionLabel={opt => opt.name}
-                value={componentItems.filter(ci => (formItem.components || []).includes(ci.id))}
-                onChange={(_, val) => setFormItem({ ...formItem, components: val.map(ci => ci.id) })}
-                renderInput={(params) => (
-                  <TextField {...params} label="Components (Select 0 or more)" />
-                )}
-              />
-            )}
+            <Box>
+              <Typography variant="subtitle1">Kit List</Typography>
+              {(proj.items||[]).map((it,i)=>(
+                <Stack key={i} direction="row" spacing={1} alignItems="center" sx={{my:0.5}}>
+                  <Autocomplete
+                    freeSolo
+                    options={inventoryItems.map(inv=>inv.name)}
+                    value={it.name}
+                    onInputChange={(_, val)=>updateProjItem(i, 'name', val)}
+                    sx={{ width:220 }}
+                    renderInput={params => <TextField {...params} label="Item/Package Name" />}
+                  />
+                  <TextField
+                    label="Qty"
+                    type="number"
+                    InputProps={{ inputProps: {min:1} }}
+                    sx={{ width: 80 }}
+                    value={it.qty||1}
+                    onChange={e=>updateProjItem(i, 'qty', parseInt(e.target.value)||1)}
+                  />
+                  {(proj.items||[]).length > 1 && (
+                    <Button onClick={()=>removeKitLine(i)}>-</Button>
+                  )}
+                  {i === (proj.items||[]).length-1 && (
+                    <Button onClick={addKitLine}>+</Button>
+                  )}
+                </Stack>
+              ))}
+            </Box>
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowForm(false)}>Cancel</Button>
-          <Button variant="contained" onClick={handleAdd}>Save</Button>
+          <Button onClick={()=>setShowForm(false)}>Cancel</Button>
+          <Button variant="contained" onClick={addProject}>Save</Button>
         </DialogActions>
       </Dialog>
       <Snackbar
         open={snackbar.open}
         autoHideDuration={4000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        onClose={()=>setSnackbar({...snackbar, open:false})}
         message={snackbar.message}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       />
