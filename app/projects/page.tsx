@@ -257,7 +257,7 @@ export default function ProjectsPage() {
                   <TextField
                     label="Qty"
                     type="number"
-                    InputProps={{ inputProps: {min:1} }}
+                    inputProps={{ min: 1 }}
                     sx={{ width: 80 }}
                     value={it.qty||1}
                     onChange={e=>updateProjItem(i, 'qty', parseInt(e.target.value)||1)}
